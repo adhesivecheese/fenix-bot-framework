@@ -1,3 +1,9 @@
+[PRAW]
+client_id: my client id
+client_secret: my client secret
+user_agent: my user agent
+subreddit: my_subreddit
+
 [LOGGING]
 Log_Name: fenix-log
 Retention_Days: 30

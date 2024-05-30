@@ -1,19 +1,27 @@
 #!/usr/bin/env python3
+from configparser import ConfigParser
 
 import praw
 
 from SubredditStream import MultiStream
+
+config = ConfigParser()
+config.read('config.ini')
+CLIENT_ID = config["PRAW"].get("client_id")
+CLIENT_SECRET = config["PRAW"].get("client_secret")
+USER_AGENT = config["PRAW"].get("user_agent")
+SUBREDDIT = config["PRAW"].get("subreddit")
 
 """
 praw setup is as normal - you'll need a praw.Redit object, and you'll need a 
 praw.reddit.subreddit object to feed to MultiStream.
 """
 r = praw.Reddit(
-	client_id="my client id"
-	, client_secret="my client secret"
-	, user_agent="my user agent"
+	client_id=CLIENT_ID
+	, client_secret=CLIENT_SECRET
+	, user_agent=USER_AGENT
 )
-sub = r.subreddit("my_subreddit")
+sub = r.subreddit(SUBREDDIT)
 
 """
 Select the streams you wish to monitor here. Streams are checked in the order
