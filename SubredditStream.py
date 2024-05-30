@@ -522,6 +522,12 @@ class MultiStream:
 				sleep(EXCEPTION_PAUSE)
 				logger.info("MultiStream streams restarting!")
 				self.rebuild_streams()
+			except KeyboardInterrupt:
+				logger.info("MultiStream shutting down - at keboard Interrupt!")
+				self.shutdown()
+				return
+			except Exception:
+				logger.opt(exception=True).critical(f"Unhandled Error:")
 
 
 class SubredditStream:
