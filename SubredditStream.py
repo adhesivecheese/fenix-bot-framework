@@ -108,7 +108,7 @@ class PerformanceCounter:
 		# Allow us to dip into reserve calls if we've exhasted our normal
 		# calls. This should probably be a configurable setting?
 		if calls_remaining < 0:
-			calls_remaining = self.self.ratelimit_requests - calls_used
+			calls_remaining = self.ratelimit_requests - calls_used
 			if calls_remaining > 10:
 				msg = f"Exhausted Safe Calls. {calls_remaining} left in reserve"
 				msg += f" for the next {time_remaining} seconds."
