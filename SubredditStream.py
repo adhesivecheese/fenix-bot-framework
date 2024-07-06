@@ -107,7 +107,7 @@ class PerformanceCounter:
 		
 		# Allow us to dip into reserve calls if we've exhasted our normal
 		# calls. This should probably be a configurable setting?
-		if calls_remaining < 0:
+		if calls_remaining <= 0:
 			calls_remaining = self.ratelimit_requests - calls_used
 			if calls_remaining > 10:
 				msg = f"Exhausted Safe Calls. {calls_remaining} left in reserve"
@@ -121,43 +121,33 @@ class PerformanceCounter:
 				sleep(time_remaining)
 				return
 
+
+		self.current_wait = (
+			(time_remaining / calls_remaining) / self.safety_threshold
+			) + last_run_duration
+
 		# These calculate the calls per second since the last reset, and what
 		# the future usage needs to be to hit our target; these should stay
 		# as close to balanced as possible.
 		current_usage_rate = calls_used / time_elapsed
 		future_usage_rate = calls_remaining / time_remaining
 
-		# The time we'll exhaust the current ratelimit at the current rate
-		exhaustion_time = calls_remaining / current_usage_rate
-		# Divided by 10 to spread the needed wait over the next 10 loops
-		self.current_wait = (time_remaining - exhaustion_time)/10
-
-		# This if statement is voodoo code. I don't quite understand why it
-		# works, but it does. It tends to introduce a little flapping back and
-		# forth on the next sleep, but c'est la vie.
 		if current_usage_rate > future_usage_rate:
 			self.current_wait += last_run_duration
 
-		# Depending on how we catch the reset in the process of making calls,
-		# the first few loops on a new reset can have ASTRONOMICALLY high 
-		# reported calls-per-second; 30 seconds is about the right amount of
-		# time for that to level out to reasonable levels.
-		if time_elapsed < 30:
-			self.current_wait = self.min_wait + (self.min_wait / 3)
-	
+		# a bit of jitter so we're not ever hitting the API at a fixed interval
+		self.current_wait = self.current_wait + abs(self.jitter())
+
+		# There's never a need to wait longer than our next reset.
+		if self.current_wait > time_remaining:
+			self.current_wait = time_remaining
+
 		# Don't ever wait less time than the minimum wait time. There are 
 		# certain situations that this might mean we don't use all our calls 
 		# (say, if a couple loops take an inordinantly long time to run)
 		# but better to undershoot than overshoot.
 		if self.current_wait < self.min_wait:
 			self.current_wait = self.min_wait
-
-		# There's never a need to wait longer than our next reset.
-		if self.current_wait > time_remaining:
-			self.current_wait = time_remaining
-
-		# a bit of jitter so we're not ever hitting the API at a fixed interval
-		self.current_wait = self.current_wait + abs(self.jitter())
 
 		msg = f"Current CPS Rate: {current_usage_rate:0.3f} | "
 		msg += f"Future CPS Rate: {future_usage_rate:0.3f} | "
@@ -166,7 +156,7 @@ class PerformanceCounter:
 		msg += f"Sleeping: ~{self.current_wait:0.3f} seconds"
 		logger.debug(msg)
 
-		sleep(self.current_wait)
+		sleep(abs(self.current_wait))
 
 
 class ExponentialCounter:
@@ -522,13 +512,8 @@ class MultiStream:
 				sleep(EXCEPTION_PAUSE)
 				logger.info("MultiStream streams restarting!")
 				self.rebuild_streams()
-			except KeyboardInterrupt:
-				logger.info("MultiStream shutting down - at keboard Interrupt!")
-				self.shutdown()
-				return
 			except Exception:
 				logger.opt(exception=True).critical(f"Unhandled Error:")
-
 
 class SubredditStream:
 	"""
