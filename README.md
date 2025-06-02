@@ -25,9 +25,7 @@ Tying these two items together is `MultiStream` - a class which can build (and o
 ## TODO
 
 - [ ] Expand documentation - The code is fairly well documented, but additional external documentation would be helpful
-- [ ] Enable the ability to stream Wiki Pages
 - [ ] Simplify passing params to streams
-- [ ] A special stream for monitoring a bot's inbox
 - [ ] Your idea?
 
 ## Contributing

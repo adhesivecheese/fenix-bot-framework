@@ -7,6 +7,7 @@ from pathlib import Path
 from random import random, randint
 from time import sleep, time
 
+from praw.models import ListingGenerator, WikiPage
 import praw.models.reddit as praw_models
 from prawcore.exceptions import (
 	BadRequest, ResponseException, ServerError, RequestException
@@ -27,7 +28,8 @@ EDIT_FETCH_ATTEMPTS = config["STREAMS"].getint("Edit_Fetch_Attempts", 3)
 EXCEPTION_PAUSE = config["STREAMS"].getint("Exeption_Pause", 60)
 LOG_STREAMS = config["LOGGING"].getboolean("Log_Streams", True)
 #Effects ExponentialCounter
-RATELIMIT_EXHAUSTION = config["LOGGING"].getboolean("Ratelimit_Exhaustion", True)
+RATELIMIT_EXHAUSTION = config["LOGGING"].\
+	getboolean("Ratelimit_Exhaustion", True)
 MIN_WAIT = config["STREAMS"].getint("Min_Wait", 1)
 MAX_WAIT = config["STREAMS"].getint("Max_Wait", 16)
 #Effects PerformanceCounter
@@ -110,9 +112,10 @@ class PerformanceCounter:
 		if calls_remaining <= 0:
 			calls_remaining = self.ratelimit_requests - calls_used
 			if calls_remaining > 10:
-				msg = f"Exhausted Safe Calls. {calls_remaining} left in reserve"
-				msg += f" for the next {time_remaining} seconds."
-				logger.warning(msg)
+				if time_remaining > 1:
+					msg = f"Exhausted Safe Calls. {calls_remaining} left in "
+					msg += f" reserve for the next {time_remaining} seconds."
+					logger.warning(msg)
 			else:
 				msg = "Reserve calls exhausted (<10 API calls remain)"
 				msg += f" for the next {time_remaining} seconds. Sleeping "
@@ -406,6 +409,7 @@ class MultiStream:
 				, sub=self.sub
 				, counter=self.counter
 				, params=params
+				, multiStream=True
 			)
 		for stream in self.stream_objects.values():
 			self.stream_generators[stream] = stream.stream(raise_errors=True)
@@ -558,17 +562,21 @@ class SubredditStream:
 			, counter=PerformanceCounter()
 			, wait_for_edit=EDIT_FETCH_ATTEMPTS
 			, params = {}
+			, multiStream = False
 		):
 		self.stream_name = stream_name.lower()
 		self.subreddit = sub
 		self._location_base = f".cache-{self.subreddit.display_name}"
-		self._save_location = f"{self._location_base}/{self.stream_name}.pkl"
+		self.sanatized_stream_name = self.stream_name.replace("/","_")
+		self._save_location = \
+			f"{self._location_base}/{self.sanatized_stream_name}.pkl"
 		self._counter = counter
 		self._seen_attributes = self.__load_seen_attributes()
 		self._listing = self._get_listing()
 		self._wait_for_edit = wait_for_edit
 		self.params = params
 		self.stream_alive = True
+		self.multiStream = multiStream
 
 
 	def remove_seen_attribute(self, attribute):
@@ -617,7 +625,17 @@ class SubredditStream:
 			return BoundedSet(1001)
 
 
-	def _get_listing(self, wikipage=None, timeframe="All"):
+	def _wiki_listing(self, limit=None, params=None):
+		if limit: params['limit'] = limit
+		page = self.stream_name.split("wiki/")[1]
+		return ListingGenerator(
+			self.subreddit._reddit
+			, f'/r/{self.subreddit.display_name}/wiki/revisions/{page}'
+			, params=params
+		)
+
+
+	def _get_listing(self):
 		"""
 		Generates a listing for use in the generator.
 
@@ -701,7 +719,10 @@ class SubredditStream:
 		elif self.stream_name == "unmoderated":
 			listingGen["source"] = self.subreddit.mod.unmoderated
 			return listingGen
-		#TODO: Wikipage Stream, which isn't implemented by praw
+		elif "wiki/" in self.stream_name:
+			listingGen["source"] = self._wiki_listing
+			listingGen["attribute"] = "_revision"
+			return listingGen
 
 
 	def __is_actually_spam(self, item):
@@ -816,6 +837,8 @@ class SubredditStream:
 				fullname = getattr(item, "fullname")
 				edited = getattr(item, "edited")
 				attribute = tuple([fullname, edited])
+			elif fetch_attribute == "wiki_id":
+				attribute = item['id']			
 			else:
 				attribute = getattr(item, fetch_attribute)
 			if attribute not in self._seen_attributes: return attribute
@@ -875,7 +898,11 @@ class SubredditStream:
 
 			# Fetch from Reddit
 			try:
-				params['before'] = before
+				if "wiki/" in self.stream_name:
+					if before:
+						params['before'] = "WikiRevision_" + before
+				else:
+					params['before'] = before
 				items = list(praw_listing(limit=limit, params=params))
 			except KeyboardInterrupt:
 				raise KeyboardInterrupt
@@ -903,6 +930,13 @@ class SubredditStream:
 
 			# Yield found items
 			for item in items:
+				if "wiki/" in self.stream_name:
+					item = WikiPage(
+						self.subreddit._reddit
+						, self.subreddit
+						, self.stream_name.split("wiki/")[1]
+						, item['id']
+					)
 				# Check if items' already been yielded; if so, don't yield again
 				attribute = __attribute_yielded(item)
 				if attribute == True:
@@ -911,15 +945,17 @@ class SubredditStream:
 				self._seen_attributes.add(attribute)
 				if self.stream_name == "spam":
 					if not self.__is_actually_spam(item): continue
+
+
 				last_item_time = time()
-				yield StreamItem(self.stream_name, item)
+				if self.multiStream: yield StreamItem(self.stream_name, item)
+				else: yield item
 
 			# We yield `None` when the stream is exhausted, so we can indicate
 			# that we're ready to check the next stream (if running multiple)
-			# if ExponentialCounter ever goes away, we can replace the next 7 
-			# lines with a single `yield None`; the counter stuff is just for 
-			# the legacy counter.
 			if has_found_items:
+				#Save the attributes if we've found new items
+				self._save_seen_attributes()
 				self._counter.reset()
 				yield None
 			else:
