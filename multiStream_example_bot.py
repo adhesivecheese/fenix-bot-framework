@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
-from configparser import ConfigParser
-
 import praw
 
 from SubredditStream import MultiStream
 
-config = ConfigParser()
-config.read('config.ini')
-CLIENT_ID = config["PRAW"].get("client_id")
-CLIENT_SECRET = config["PRAW"].get("client_secret")
-USER_AGENT = config["PRAW"].get("user_agent")
-SUBREDDIT = config["PRAW"].get("subreddit")
+
+CLIENT_ID = ""
+CLIENT_SECRET = ""
+USER_AGENT = ""
+SUBREDDIT = ""
 
 """
 praw setup is as normal - you'll need a praw.Redit object, and you'll need a 
@@ -52,9 +49,9 @@ which stream the item originated from, and `StreamItem.kind`, which will tell
 you whether the item is a submission, comment, log, etc.
 """
 for update in multistream.streams():
-	if update.stream == "submissions":
+	if update.stream_source == "submissions":
 		... # your code here
-	elif update.stream =="edited":
+	elif update.stream_source =="edited":
 		... # your code here
-	elif update.stream == "log":
+	elif update.stream_source == "log":
 		... # your code here
