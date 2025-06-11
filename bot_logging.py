@@ -2,14 +2,18 @@
 
 from loguru import logger #Must be first import
 from sys import stdout
-from configparser import ConfigParser
 
-config = ConfigParser()
-config.read('config.ini')
-LOG_NAME = config["LOGGING"].get("Log_Name", "fenix-bot")
+from .bot_config import load_config, get_log_path
+
+config = load_config()
+LOG_NAME = config["LOGGING"].get("Log_Name", "bot")
+LOG_ROTATION_DAYS = config["LOGGING"].getint("Rotation_Days", 1)
 LOG_RETENTION_DAYS = config["LOGGING"].getint("Retention_Days", 30)
 DEBUG_LOGS = config["LOGGING"].getboolean("Debug_Logs", False)
-TRACEBACK = config["LOGGING"].getboolean("Traceback", False)
+
+
+log_dir = get_log_path()
+log_dir.mkdir(parents=True, exist_ok=True)
 
 # Remove the default logger
 logger.remove() 
@@ -31,6 +35,10 @@ modlog_level        = logger.level("MODLOG", no=20)
 mm_convo_level      = logger.level("MODMAIL", no=20)
 reports_level       = logger.level("REPORTS", no=20)
 
+approve_level       = logger.level("APPROVE", no=22, color="<green>")
+remove_level        = logger.level("REMOVE", no=22, color="<yellow>")
+ban_level           = logger.level("BAN", no=24, color="<red>")
+
 # Set Log formats for console and text file log
 log_format = "{time: YYYY-MM-DD HH:mm:ss:SSZZ} | {level: <14} | "
 log_format += "{name}:{function}:{line} | {message}"
@@ -45,10 +53,14 @@ else:
 	log_level = "INFO"
 	console_log_level = "EPHEMERAL"
 
+ 
 # Add the text log.
 logger.add(
-	f"{LOG_NAME}.log"
+	log_dir / "bot_{time}.log"
+	, rotation=f"{LOG_ROTATION_DAYS} days"
 	, retention=f"{LOG_RETENTION_DAYS} days"
+	, compression="zip"
+	, enqueue=True
 	, level=log_level
 	, format=log_format
 	, backtrace=DEBUG_LOGS

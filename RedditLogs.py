@@ -1,44 +1,19 @@
-#!/usr/bin/env python3
-
 from loguru import logger #Must be first import
 
-from configparser import ConfigParser
 from time import time
 from datetime import datetime
 
-config = ConfigParser()
-config.read('config.ini')
-SHOW_DELAY = config["LOGGING"].getboolean("Show_Delay", False)
+from .bot_config import load_config
+
+config = load_config()
+SHOW_DELAY = config["LOGGING"].getboolean("Debug_Logs", False)
 
 class RedditLogs:
-	"""
-	Formatting for display of Reddit items to a logugu log
-
-	Params
-	------
-	r : praw.Reddit
-	show_delay : boolean
-		whether to include the calculated delay between when an item was created
-		and when it was picked up by the bot. Defaults to False.
-	"""
-	def __init__(self, r=None, show_delay=SHOW_DELAY):
+	def __init__(self, r=None):
 		self.r = r
-		self.show_delay = show_delay
-
+		self.show_delay = SHOW_DELAY
 
 	def __calc_delay(self, item_time):
-		"""
-		Calcualates the delay between when an item was created (or edited) and 
-		the time it was picked up by the bot
-
-		Params
-		------
-		item_time : int | float
-
-		Returns
-		-------
-		str
-		"""
 		if not self.show_delay: return ""
 		try:
 			if self.show_delay:
@@ -47,45 +22,15 @@ class RedditLogs:
 			else: return ""
 		except: return ("(unknown delay) ")
 
-
 	def __get_author_name(self, item):
-		"""
-		get the item author's display name, if available, or else return `[deleted]`
-
-		Params
-		------
-		item : praw.models.Comment | praw.models.Submission
-
-		Returns
-		-------
-		str : the author's name
-		"""
 		try:
 			name = item.author.name
 			return f"/u/{name}"
 		except AttributeError:
 			return "[deleted]"
 
-
 	def log_comments(self, item, log_kind="COMMENTS", delay=None, extra=None):
-		"""
-		Log message formatter Comments.
-
-		Params
-		------
-		item : praw.models.Comment
-		log_kind : str
-			defaults to `COMMENTS`, but this logic is also used to display 
-			comments in the SPAM, REMOVED, MODQUEUE, and EDITED messages.
-		delay : str
-			a string for the delay, if being calculated, for other logs that
-			use this display logic
-		extra : str
-			used for displaying edit time.
-		"""
 		name = self.__get_author_name(item)
-		# Reddit doesn't give us a convenient way to get the comment shortlink
-		# format from what they provide, so we have to cook that up ourselves.
 		permalink = item.link_permalink.split("comments/")[0]
 		permalink += f"comments/{item.parent_id[3:]}/-/{item.id}"
 		if not extra: extra = ""
@@ -93,24 +38,7 @@ class RedditLogs:
 		msg = f"{delay}{permalink} by {name}{extra}"
 		logger.log(log_kind, msg)
 
-
 	def log_submissions(self, item, log_kind="SUBMISSIONS", delay=None, extra=None):
-		"""
-		Log message formatter Submissions.
-
-		Params
-		------
-		item : praw.models.Submission
-		log_kind : str
-			defaults to `SUBMISSIONS`, but this logic is also used to display 
-			comments in the HOT, RISING, TOP, CONTROVERSIAL, UNMODERATED, SPAM, 
-			REMOVED, MODQUEUE, EDITED messages.
-		delay : str
-			a string for the delay, if being calculated, for other logs that
-			use this display logic
-		extra : str
-			used for displaying edit time.
-		"""
 		name = self.__get_author_name(item)
 		if not delay: delay = self.__calc_delay(item.created_utc)
 		if not extra: extra = ""
@@ -119,56 +47,39 @@ class RedditLogs:
 
 
 	def log_hot(self, item):
-		"""Log message formatter for hot"""
 		self.log_submissions(item, log_kind="HOT")
 
-
 	def log_rising(self, item):
-		"""Log message formatter for rising"""
 		self.log_submissions(item, log_kind="RISING")
 
-
 	def log_top(self, item):
-		"""Log message formatter for top"""
 		self.log_submissions(item, log_kind="TOP")
 
-
 	def log_controversial(self, item):
-		"""Log message formatter for controversial"""
 		self.log_submissions(item, log_kind="CONTROVERSIAL")
 
-
 	def log_unmoderated(self, item):
-		"""Log message formatter for unmoderated"""
 		self.log_submissions(item, log_kind="UNMODERATED")
 
-
 	def log_spam(self, item, kind):
-		"""Log message formatter for spam."""
 		if kind == "submissions":
 			self.log_submissions(item, log_kind="SPAM")
 		elif kind == "comments":
 			self.log_comments(item, log_kind="SPAM")
 
-
 	def log_removed(self, item, kind):
-		"""Log message formatter for removed"""
 		if kind == "submissions":
 			self.log_submissions(item, log_kind="REMOVED")
 		elif kind == "comments":
 			self.log_comments(item, log_kind="REMOVED")
 
-
 	def log_modqueue(self, item, kind):
-		"""Log message formatter for modqueue"""
 		if kind == "submissions":
 			self.log_submissions(item, log_kind="MODQUEUE")
 		elif kind == "comments":
 			self.log_comments(item, log_kind="MODQUEUE")
 
-
 	def log_edited(self, item, kind):
-		"""Log message formatter for edited"""
 		delay = self.__calc_delay(item.edited)
 		if isinstance(item.edited, float):
 			edit_time = datetime.fromtimestamp(item.edited)
@@ -181,17 +92,17 @@ class RedditLogs:
 
 
 	def log_modmail_conversations(self, item):
-		"""Log message formatter for modmail"""
 		...
 
 
 	def log_reports(self, item):
-		"""Log message formatter for reports"""
+		...
+
+	def log_wikipage(self, item, kind):
 		...
 
 
 	def log_log(self, item):
-		"""Log message formatter for modlog"""
 		delay = self.__calc_delay(item.created_utc)
 		actions = {
 			"acceptmoderatorinvite":"accept moderator invite"
